@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/scrapli/scrapligo/driver/network"
 	"github.com/scrapli/scrapligo/driver/options"
@@ -76,16 +78,18 @@ func newSession(t driver.Target, extra ...util.Option) (*session, error) {
 		)
 	}
 
-	if t.Host == "" {
-		return nil, fmt.Errorf("host is required")
+	if err := checkArg("host", t.Host); err != nil {
+		return nil, err
 	}
 
-	if t.Username == "" {
-		return nil, fmt.Errorf("username is required")
+	if err := checkArg("username", t.Username); err != nil {
+		return nil, err
 	}
 
-	if t.Timeout <= 0 {
-		return nil, fmt.Errorf("timeout must be positive")
+	// OpenSSH takes ConnectTimeout and ServerAliveInterval in whole seconds,
+	// and scrapligo truncates, so a shorter timeout would disable both.
+	if t.Timeout < time.Second {
+		return nil, fmt.Errorf("timeout must be at least 1s, got %s", t.Timeout)
 	}
 
 	// Key and agent authentication only: fail instead of waiting at a
@@ -130,6 +134,25 @@ func newSession(t driver.Target, extra ...util.Option) (*session, error) {
 	}
 
 	return &session{target: t, spec: spec, opts: append(opts, extra...)}, nil
+}
+
+// checkArg rejects values that OpenSSH would misread when passed on its
+// command line: empty values, a leading "-" (parsed as an option, since the
+// host is passed before the options), and whitespace or control characters.
+func checkArg(field, v string) error {
+	if v == "" {
+		return fmt.Errorf("%s is required", field)
+	}
+
+	if strings.HasPrefix(v, "-") {
+		return fmt.Errorf("%s %q must not start with \"-\"", field, v)
+	}
+
+	if strings.IndexFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return fmt.Errorf("%s %q must not contain whitespace or control characters", field, v)
+	}
+
+	return nil
 }
 
 // localFile expands a leading "~" to the user's home directory, makes the path

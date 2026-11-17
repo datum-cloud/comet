@@ -106,10 +106,15 @@ func TestRunCommandsDeviceError(t *testing.T) {
 
 func TestNewRejectsInvalidTargets(t *testing.T) {
 	cases := map[string]func(*driver.Target){
-		"unknown platform": func(t *driver.Target) { t.Platform = "ios" },
-		"missing host":     func(t *driver.Target) { t.Host = "" },
-		"missing username": func(t *driver.Target) { t.Username = "" },
-		"zero timeout":     func(t *driver.Target) { t.Timeout = 0 },
+		"unknown platform":   func(t *driver.Target) { t.Platform = "ios" },
+		"missing host":       func(t *driver.Target) { t.Host = "" },
+		"missing username":   func(t *driver.Target) { t.Username = "" },
+		"zero timeout":       func(t *driver.Target) { t.Timeout = 0 },
+		"sub-second timeout": func(t *driver.Target) { t.Timeout = 500 * time.Millisecond },
+		"host as option":     func(t *driver.Target) { t.Host = "-oProxyCommand=touch x" },
+		"host with space":    func(t *driver.Target) { t.Host = "192.0.2.1 -v" },
+		"username as option": func(t *driver.Target) { t.Username = "-v" },
+		"username with tab":  func(t *driver.Target) { t.Username = "ops\tx" },
 	}
 
 	for name, mutate := range cases {
@@ -228,8 +233,10 @@ func TestOpenArgs(t *testing.T) {
 				{"-o", "StrictHostKeyChecking=yes"},
 				{"-F", "/dev/null"},
 			},
+			// No UserKnownHostsFile override: OpenSSH's default known_hosts applies.
 			notWant: [][]string{
 				{"-o", "StrictHostKeyChecking=no"},
+				{"-o", "UserKnownHostsFile=/dev/null"},
 				{"-i"},
 			},
 		},

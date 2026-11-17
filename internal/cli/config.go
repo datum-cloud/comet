@@ -61,10 +61,20 @@ func runConfigGet(o *globalOptions, outDir string) error {
 			return errors.New("--output-dir is required when collecting from more than one device")
 		}
 	} else {
+		// Case-insensitive file systems (the macOS default) map names that
+		// differ only in case to the same file.
+		seen := map[string]string{}
+
 		for _, t := range targets {
 			if _, err := configFileName(t.Name); err != nil {
 				return err
 			}
+
+			if prev, ok := seen[strings.ToLower(t.Name)]; ok {
+				return fmt.Errorf("device names %q and %q differ only in case and would write the same file", prev, t.Name)
+			}
+
+			seen[strings.ToLower(t.Name)] = t.Name
 		}
 	}
 
@@ -74,7 +84,7 @@ func runConfigGet(o *globalOptions, outDir string) error {
 	}
 
 	if outDir != "" {
-		if err := os.MkdirAll(outDir, 0o700); err != nil {
+		if err := checkOutputDir(outDir); err != nil {
 			return err
 		}
 	}
@@ -112,11 +122,32 @@ func runConfigGet(o *globalOptions, outDir string) error {
 // configFileName returns the file name for a device's configuration, <name>.cfg.
 // Names that would escape the output directory are rejected.
 func configFileName(name string) (string, error) {
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+	file := name + ".cfg"
+
+	// 255 bytes is the file name limit on Linux and macOS file systems.
+	if name == "" || name == "." || name == ".." || len(file) > 255 ||
+		strings.ContainsAny(name, "/\\\x00") {
 		return "", fmt.Errorf("device name %q cannot be used as a file name", name)
 	}
 
-	return name + ".cfg", nil
+	return file, nil
+}
+
+// checkOutputDir creates dir and checks that a file can be written in it, so
+// an unusable --output-dir stops the run before any device is contacted.
+func checkOutputDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+
+	f, err := os.CreateTemp(dir, ".comet-probe-*")
+	if err != nil {
+		return fmt.Errorf("output directory %q is not writable: %w", dir, err)
+	}
+
+	_ = f.Close()
+
+	return os.Remove(f.Name())
 }
 
 // writeConfig atomically replaces dir/<name>.cfg with cfg, with mode 0600. The

@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -57,6 +59,11 @@ func Parse(b []byte) (*Inventory, error) {
 		return nil, fmt.Errorf("parsing inventory: %w", err)
 	}
 
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, errors.New("inventory must be a single YAML document")
+	}
+
 	if len(inv.Devices) == 0 {
 		return nil, errors.New("inventory has no devices")
 	}
@@ -71,11 +78,15 @@ func Parse(b []byte) (*Inventory, error) {
 		}
 
 		if d.Port < 0 || d.Port > 65535 {
-			return nil, fmt.Errorf("device %d (%q): port %d is out of range 1-65535", i, d.Name, d.Port)
+			return nil, fmt.Errorf("device %d (%q): port %d must be between 1 and 65535", i, d.Name, d.Port)
 		}
 
 		if d.Name == "" {
 			inv.Devices[i].Name = d.Host
+		}
+
+		if strings.IndexFunc(inv.Devices[i].Name, unicode.IsControl) >= 0 {
+			return nil, fmt.Errorf("device %d: name %q contains control characters", i, inv.Devices[i].Name)
 		}
 	}
 

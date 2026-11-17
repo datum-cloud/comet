@@ -102,7 +102,7 @@ does not stop the others. Each failure is printed to stderr, and `comet` exits
 with status 1 if any device failed. Every device is validated before any is
 contacted, so an inventory error stops the run without touching the network.
 
-`--timeout` (default `60s`) applies to connecting and to each command. Raise it
+`--timeout` (default `60s`, minimum `1s`) applies to connecting and to each command. Raise it
 for devices with very large configurations.
 
 ## Inventory
@@ -111,7 +111,8 @@ See [`examples/inventory.example.yaml`](examples/inventory.example.yaml). `host`
 are required; `name` defaults to `host`. `port` (1-65535), `username`,
 `ssh_key` and `transport` override the matching flags for that device. Unknown
 keys are rejected. With `--output-dir`, every device name must be usable as a
-file name, or the run stops before any device is contacted.
+file name and unique ignoring case, and the directory must be writable, or the
+run stops before any device is contacted.
 
 ## Extending
 

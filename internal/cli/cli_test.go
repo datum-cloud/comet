@@ -11,16 +11,34 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.datum.net/comet/internal/driver"
 )
 
 // fakeSession returns canned output. A target whose host starts with "fail"
-// fails to connect.
-type fakeSession struct{ t driver.Target }
+// fails to connect. Open records the call and how many sessions are open at
+// once, and waits for the harness's per-device delay.
+type fakeSession struct {
+	t driver.Target
+	h *harness
+}
 
 func (f *fakeSession) Open() error {
+	f.h.opens.Add(1)
+
+	n := f.h.active.Add(1)
+	for {
+		peak := f.h.peak.Load()
+		if n <= peak || f.h.peak.CompareAndSwap(peak, n) {
+			break
+		}
+	}
+
+	time.Sleep(f.h.delay[f.t.Name])
+
 	if strings.HasPrefix(f.t.Host, "fail") {
 		return errors.New("connection refused")
 	}
@@ -28,7 +46,11 @@ func (f *fakeSession) Open() error {
 	return nil
 }
 
-func (f *fakeSession) Close() error { return nil }
+func (f *fakeSession) Close() error {
+	f.h.active.Add(-1)
+
+	return nil
+}
 
 func (f *fakeSession) GetConfig() (string, error) { return "hostname " + f.t.Name, nil }
 
@@ -46,6 +68,10 @@ type harness struct {
 
 	// env, when set, replaces the default environment of COMET_USERNAME=ops.
 	env map[string]string
+	// delay holds how long Open takes, by device name.
+	delay map[string]time.Duration
+
+	opens, active, peak atomic.Int32
 
 	mu      sync.Mutex
 	targets []driver.Target
@@ -78,7 +104,7 @@ func (h *harness) execute(t *testing.T, args ...string) error {
 
 			h.targets = append(h.targets, tgt)
 
-			return &fakeSession{t: tgt}, nil
+			return &fakeSession{t: tgt, h: h}, nil
 		},
 	}
 
@@ -516,5 +542,95 @@ devices:
 				t.Errorf("usernames = %v, want a=admin b=%s", got, tc.want)
 			}
 		})
+	}
+}
+
+// --workers bounds how many devices are open at once, and output stays in
+// inventory order even when earlier devices finish last.
+func TestWorkersBoundConcurrencyAndKeepOrder(t *testing.T) {
+	h := harness{delay: map[string]time.Duration{
+		"d1": 60 * time.Millisecond,
+		"d2": 40 * time.Millisecond,
+		"d3": 20 * time.Millisecond,
+		"d4": 0,
+	}}
+
+	inv := writeInventory(t, `
+devices:
+  - {name: d1, host: 192.0.2.1, platform: eos}
+  - {name: d2, host: 192.0.2.2, platform: eos}
+  - {name: d3, host: 192.0.2.3, platform: eos}
+  - {name: d4, host: 192.0.2.4, platform: eos}
+`)
+
+	if err := h.execute(t, "exec", "-i", inv, "-c", "x", "-w", "2"); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+
+	if peak := h.peak.Load(); peak != 2 {
+		t.Errorf("peak concurrent sessions = %d, want 2", peak)
+	}
+
+	want := ""
+	for _, n := range []string{"d1", "d2", "d3", "d4"} {
+		want += "==> " + n + " <==\n--- x\n" + n + " x\n"
+	}
+
+	if got := h.stdout.String(); got != want {
+		t.Errorf("stdout:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// Names that collide on a case-insensitive file system, or are too long for a
+// file name, stop the run before any device is contacted.
+func TestConfigGetRejectsCollidingAndLongNames(t *testing.T) {
+	cases := map[string]struct{ doc, want string }{
+		"case collision": {`
+devices:
+  - {name: R1, host: 192.0.2.1, platform: eos}
+  - {name: r1, host: 192.0.2.2, platform: eos}
+`, "differ only in case"},
+		"too long": {"devices: [{name: " + strings.Repeat("a", 252) + ", host: 192.0.2.1, platform: eos}]", "cannot be used as a file name"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var h harness
+
+			err := h.execute(t, "config", "get", "-i", writeInventory(t, tc.doc), "-o", t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want containing %q", err, tc.want)
+			}
+
+			if n := h.opens.Load(); n != 0 {
+				t.Errorf("%d devices contacted", n)
+			}
+		})
+	}
+}
+
+// An output directory that cannot be written stops the run before any device
+// is contacted.
+func TestConfigGetUnwritableOutputDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to a read-only directory")
+	}
+
+	var h harness
+
+	out := t.TempDir()
+	if err := os.Chmod(out, 0o500); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = os.Chmod(out, 0o700) })
+
+	err := h.execute(t, "config", "get", "-i", writeInventory(t, twoDevices), "-o", out)
+	if err == nil || !strings.Contains(err.Error(), "not writable") {
+		t.Fatalf("error = %v, want not writable", err)
+	}
+
+	if n := h.opens.Load(); n != 0 {
+		t.Errorf("%d devices contacted", n)
 	}
 }

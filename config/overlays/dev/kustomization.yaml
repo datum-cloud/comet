@@ -16,5 +16,5 @@ components:
 
 # Override image tag for dev builds
 images:
-  - name: ghcr.io/example-org/example-service
+  - name: ghcr.io/datum-cloud/comet
     newTag: dev

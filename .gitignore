@@ -32,10 +32,7 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Build outputs
-./activity
-
-# Kubernetes secrets
+# Keys and certificates
 *.key
 *.crt
 *.pem
@@ -48,17 +45,9 @@ temp/
 .env
 .env.local
 
-# ClickHouse data
-clickhouse-data/
-
-# Dashboard build outputs
-dashboards/vendor/
-dashboards/jsonnetfile.lock.json
-observability/vendor/
-observability/jsonnetfile.lock.json
-
-# Directory used for the test-infra repo to manage the test-infra environment.
-.test-infra
-
 # Directory used by the taskfile for remote taskfile storage
 .task
+
+# Local inventories and collected device configurations (may hold real device data)
+/inventory.yaml
+/configs/

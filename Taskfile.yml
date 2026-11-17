@@ -1,0 +1,50 @@
+version: "3"
+
+vars:
+  GO_LICENSES_VERSION: v1.6.0
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GOVULNCHECK_VERSION: v1.10.0
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - "{{.TASK_EXE}} --list"
+
+  build:
+    desc: Build the comet binary into bin/
+    cmds:
+      - go build -o bin/comet .
+
+  test:
+    desc: Run unit tests with the race detector
+    cmds:
+      - go test -race ./...
+
+  lint:
+    desc: Check formatting, vet, and golangci-lint
+    cmds:
+      - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - go vet ./...
+      # Built from source so golangci-lint uses the same Go as go.mod's
+      # toolchain; a binary built with an older Go refuses to lint the module.
+      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run ./...
+
+  vuln:
+    desc: Report known vulnerabilities reachable from the code
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}} ./...
+
+  notice:
+    desc: Regenerate the NOTICE file of third-party licenses
+    cmds:
+      - go run github.com/google/go-licenses@{{.GO_LICENSES_VERSION}} report ./... --ignore go.datum.net/comet --template .notice.tmpl > NOTICE
+
+  ci:
+    desc: Lint, check for vulnerabilities, test, and build
+    cmds:
+      - task: lint
+      - task: vuln
+      - task: test
+      - task: build

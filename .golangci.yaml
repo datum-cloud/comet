@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused), plus
+  # checks suited to a tool that handles credentials and writes files.
+  enable:
+    - errorlint
+    - gosec
+    - misspell
+    - nolintlint
+    - unconvert
+    - unparam
+  exclusions:
+    rules:
+      # Tests read and write temp files and run ssh-keygen by design.
+      - path: _test\.go
+        linters: [gosec]
+
+formatters:
+  enable:
+    - gofmt

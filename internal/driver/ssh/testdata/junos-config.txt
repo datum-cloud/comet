@@ -1,0 +1,13 @@
+admin@r1> 
+admin@r1> set cli screen-width 511
+Screen width set to 511
+admin@r1> set cli screen-length 0
+Screen length set to 0
+admin@r1> set cli complete-on-space off
+Disabling complete-on-space
+admin@r1> show configuration
+## Last commit: 2026-01-01 00:00:00 UTC by admin
+system {
+    host-name r1;
+}
+admin@r1> 

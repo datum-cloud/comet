@@ -1,0 +1,7 @@
+leaf1>enable
+leaf1#
+leaf1#terminal width 32767
+leaf1#terminal length 0
+leaf1#show bogus
+% Invalid input
+leaf1#

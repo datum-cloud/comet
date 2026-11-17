@@ -1,0 +1,17 @@
+name: Required CI
+
+# Reports the "ci / Build and test" status check that the datum-cloud
+# organization requires on the default branch. The fuller checks live in
+# ci.yaml.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: datum-cloud/actions/.github/workflows/ci-basic.yaml@5af25b6999a3540391f942c7ea9e61242192b6aa # v1.28.0

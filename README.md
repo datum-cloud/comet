@@ -1,125 +1,141 @@
-# Service Template
+# comet
 
-> **This is a GitHub template repository.** Click "Use this template" to create
-> a new Kubernetes aggregated API server for your own custom resources.
+`comet` runs CLI commands against network devices and collects their running
+configurations. It supports Juniper Junos and Arista EOS over SSH, using
+[scrapligo](https://github.com/scrapli/scrapligo).
 
-A production-ready template for building Kubernetes aggregated API servers. This
-provides all the scaffolding and boilerplate needed to create custom Kubernetes
-APIs that integrate seamlessly with `kubectl` and the Kubernetes ecosystem.
+## Install
 
-## What's Included
+Download the archive for your platform (Linux or macOS, amd64 or arm64) from
+the [releases page](https://github.com/datum-cloud/comet/releases) and put the
+`comet` binary on your `PATH`. Or build from a checkout:
 
-- **Full API server scaffolding**: Production-ready Kubernetes aggregated API
-  server setup
-- **Example custom resource**: `ExampleResource` showing best practices
-- **OpenAPI/Swagger integration**: Automatic API documentation generation
-- **Metrics & monitoring**: Prometheus metrics built-in
-- **Version management**: Git-based version injection
-- **Development tooling**: Task-based build system, Docker support
-- **Scratch runtime image**: The image holds only the static binary, running
-  as user `65532:65532`. Trusted CA roots come from
-  `golang.org/x/crypto/x509roots/fallback`, imported in `main`, so a root
-  removal arrives as a dependency update. Keep that import, and add
-  `time/tzdata` to `main` if your service loads time zones
-- **Code generation**: Kubernetes code-gen integration for deepcopy and clients
-
-The template includes a working `ExampleResource` as a concrete example. You'll
-customize this to create your own resources like `DataProcessing`, `BackupJob`,
-`AnalyticsQuery`, etc.
-
-## Using This Template
-
-### 1. Create Repository
-Click "Use this template" on GitHub to create your new repository.
-
-### 2. Find & Replace
-
-Use global find-and-replace (case-sensitive) across all files:
-
-| Find | Replace With | Example |
-|------|-------------|---------|
-| `github.com/example-org/example-service` | Your module path | `github.com/myorg/myservice` |
-| `example.example-org.io` | Your API group | `myresource.mycompany.io` |
-| `ghcr.io/example-org/example-service` | Your container registry | `ghcr.io/myorg/myservice` |
-| `example-service` | Your service name | `myservice` |
-| `ExampleService` | Your service name | `MyService` |
-| `ExampleResource` | Your resource type | `DataProcessing` |
-
-### 3. Rename Directories
-
-```bash
-mv cmd/example-service cmd/myservice
-mv pkg/apis/example-service pkg/apis/myservice
+```sh
+task build   # writes bin/comet
 ```
 
-### 4. Customize API Types
+`comet` drives the system OpenSSH client, so `ssh` must be on `PATH`. Windows
+is not supported; use WSL.
 
-Edit `pkg/apis/myservice/v1alpha1/types.go`:
-- Rename `ExampleResource` to your resource type
-- Update `ExampleResourceSpec` fields for your use case
-- Update `ExampleResourceStatus` fields for your status
-- Review `genclient` directives for your needs (namespaced vs cluster-scoped,
-  allowed verbs)
+### Verifying a release
 
-### 5. Build & Generate
+Each release publishes `checksums.txt`, a Sigstore signature bundle for it,
+an SBOM per archive, and GitHub build provenance attestations. To check a
+download, verify the checksum file's signature, then the archive against it:
 
-```bash
-go mod tidy
-task generate
-task build
-task test
+```sh
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/datum-cloud/comet/\.github/workflows/release\.yaml@refs/tags/v'
+sha256sum --ignore-missing -c checksums.txt
 ```
 
-### 6. Implement Storage Backend
+Or check the archive's build provenance with the GitHub CLI:
 
-The main TODO is in `internal/apiserver/apiserver.go` - look for the `TEMPLATE
-NOTE` comment. You need to:
-- Create a REST storage implementation
-- Connect to your backend (database, API, cache, etc.)
-- Implement CRUD operations
-- Register storage in the apiserver
-
-See the [Kubernetes
-sample-apiserver](https://github.com/kubernetes/sample-apiserver/tree/master/pkg/registry)
-for examples.
-
-### 7. Deploy (Optional)
-
-Test deployment to a Kubernetes cluster:
-
-```bash
-# Review deployment manifests
-cat config/README.md
-
-# Generate and review manifests
-kubectl kustomize config/base
-
-# Deploy to cluster (requires TLS certs)
-./config/deploy-dev.sh
+```sh
+gh attestation verify comet_<version>_linux_amd64.tar.gz --repo datum-cloud/comet
 ```
 
-See [config/README.md](config/README.md) for detailed deployment instructions.
+## Authentication
 
-### 8. Clean Up
+Only SSH key authentication is supported. `comet` uses your ssh-agent and
+default identities, or the key given with `--ssh-key` (or `ssh_key` in the
+inventory). The key is passed to OpenSSH with `-i`, so a passphrase-protected
+key works when it is loaded in ssh-agent; `comet` never reads it. Paths may
+start with `~/`. A key or `--ssh-config` file that does not exist stops the run
+before any device is contacted. Password prompts are disabled, so a device
+that does not accept the key fails immediately instead of waiting.
 
-Search for `TEMPLATE NOTE` comments throughout the codebase and remove them once
-you've addressed each customization point.
+Host keys are verified against `~/.ssh/known_hosts`, and a device with no entry
+there fails to connect. Add entries before the first run, for example with
+`ssh-keyscan -H 192.0.2.1 >> ~/.ssh/known_hosts`, after checking the
+fingerprints. Pass `--insecure-ignore-host-key` only for lab devices. Your
+`~/.ssh/config` is not read unless you pass it with `--ssh-config
+~/.ssh/config`; do that to use jump hosts or per-host settings.
 
-## Prerequisites
+The username comes from `--username`, then `COMET_USERNAME`, then `$USER`.
 
-**For users:**
-- Kubernetes 1.34+ cluster
-- kubectl configured to access your cluster
+## Usage
 
-**For developers:**
-- Go 1.25.0 or later
-- [Task](https://taskfile.dev) for development workflows
-- Docker for building container images
+Collect configurations from an inventory, one `<name>.cfg` file per device
+(mode `0600`):
+
+```sh
+comet config get -i inventory.yaml -o ./configs
+```
+
+Collect one device's configuration to stdout:
+
+```sh
+comet config get --host 192.0.2.2 --platform eos
+```
+
+`--platform` and `--name` apply only to `--host`; with `--inventory`, set them
+in the inventory.
+
+Limit a run to some inventory devices with `--limit`/`-l`. It takes glob
+patterns matched against device names, comma-separated or repeated. A device
+runs if it matches any pattern, and a pattern that matches no device is an
+error:
+
+```sh
+comet config get -i inventory.yaml -o ./configs -l 'rtr*'
+comet exec -i inventory.yaml -l '*.lab1,tor1a.*' -c "show version"
+```
+
+Run operational commands:
+
+```sh
+comet exec -i inventory.yaml -c "show version" -c "show interfaces terse"
+```
+
+Configurations use the platform's native hierarchical format:
+
+| Platform | `--platform` | Configuration command |
+| -------- | ------------ | --------------------- |
+| Juniper Junos | `junos` | `show configuration` |
+| Arista EOS | `eos` | `show running-config` |
+
+Devices run concurrently (`--workers`, default 10). A failure on one device
+does not stop the others. Each failure is printed to stderr, and `comet` exits
+with status 1 if any device failed. Every device is validated before any is
+contacted, so an inventory error stops the run without touching the network.
+
+`--timeout` (default `60s`, minimum `1s`) applies to connecting and to each command. Raise it
+for devices with very large configurations.
+
+## Inventory
+
+See [`examples/inventory.example.yaml`](examples/inventory.example.yaml). `host` and `platform`
+are required; `name` defaults to `host`. `port` (1-65535), `username`,
+`ssh_key` and `transport` override the matching flags for that device. Unknown
+keys are rejected. With `--output-dir`, every device name must be usable as a
+file name and unique ignoring case, and the directory must be writable, or the
+run stops before any device is contacted.
+
+## Extending
+
+Transports implement `driver.Session` in `internal/driver` and register a
+`driver.Factory` under a name from their package's `init` function; `main.go`
+imports each transport for that side effect. The `--transport` flag and the
+inventory `transport` field select one. NETCONF, eAPI or gNMI support is added
+the same way.
+
+To support another operating system over SSH, add an entry to the `platforms`
+table in `internal/driver/ssh/ssh.go`. The entry maps the comet platform name
+to a scrapligo platform definition and the platform's configuration command.
+
+## Development
+
+```sh
+task ci   # gofmt, go vet, golangci-lint, govulncheck, go test -race, build
+```
+
+The SSH driver tests replay recorded Junos and EOS sessions through
+scrapligo's file transport, so they need no devices.
 
 ## License
 
-See [LICENSE](LICENSE) for details.
-
----
-
-**Questions or feedback?** Open an issue—we're here to help!
+comet is licensed under the GNU Affero General Public License v3.0 or later.
+See [LICENSE](LICENSE).

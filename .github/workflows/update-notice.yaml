@@ -1,0 +1,22 @@
+name: Update NOTICE
+
+# Regenerates NOTICE and commits it to the branch when a push (for example a
+# Renovate update) changes go.mod or go.sum, so the NOTICE check in ci.yaml
+# passes without a manual 'task notice'.
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  update-notice:
+    uses: datum-cloud/actions/.github/workflows/update-notice.yaml@5af25b6999a3540391f942c7ea9e61242192b6aa # v1.28.0
+    permissions:
+      contents: write # commit the regenerated NOTICE to the branch

@@ -1,0 +1,12 @@
+# Example comet inventory. Only host and platform are required; name defaults
+# to host. port, username and ssh_key override the matching command-line flags
+# for that device. transport defaults to ssh.
+devices:
+  - name: core1
+    host: 192.0.2.1
+    platform: junos
+  - name: leaf1
+    host: 192.0.2.2
+    platform: eos
+    username: netops
+    ssh_key: ~/.ssh/id_ed25519

@@ -1,0 +1,13 @@
+leaf1>enable
+leaf1#
+leaf1#terminal width 32767
+leaf1#terminal length 0
+leaf1#show running-config
+! Command: show running-config
+hostname leaf1
+!
+interface Ethernet1
+   description uplink
+!
+end
+leaf1#

@@ -219,6 +219,7 @@ func TestValidationErrors(t *testing.T) {
 		"no devices":         {[]string{"config", "get"}, "--inventory or --host"},
 		"both sources":       {[]string{"config", "get", "-i", inv, "--host", "x"}, "not both"},
 		"host needs platfrm": {[]string{"config", "get", "--host", "x"}, "--platform is required"},
+		"name with control":  {[]string{"exec", "--host", "x", "--platform", "eos", "--name", "a\x1bb", "-c", "x"}, "control characters"},
 		"multi needs outdir": {[]string{"config", "get", "-i", inv}, "--output-dir is required"},
 		"exec needs command": {[]string{"exec", "--host", "x", "--platform", "eos"}, "--command"},
 		"bad workers":        {[]string{"exec", "-i", inv, "-c", "x", "-w", "0"}, "--workers"},

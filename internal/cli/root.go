@@ -11,8 +11,10 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -116,6 +118,10 @@ func (o *globalOptions) targets() ([]driver.Target, error) {
 	case o.host != "":
 		if o.platform == "" {
 			return nil, errors.New("--platform is required with --host")
+		}
+
+		if strings.IndexFunc(o.name, unicode.IsControl) >= 0 {
+			return nil, fmt.Errorf("--name %q contains control characters", o.name)
 		}
 
 		devs = []inventory.Device{{

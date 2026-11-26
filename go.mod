@@ -5,7 +5,7 @@ go 1.26.4
 toolchain go1.27.4
 
 require (
-	github.com/scrapli/scrapligo v1.4.4
+	github.com/scrapli/scrapligo v1.4.5
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )
